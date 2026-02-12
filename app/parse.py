@@ -34,8 +34,10 @@ AUTHOR_FIELDS = [field.name for field in fields(Author)]
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)8s]: %(message)s",
-    handlers=[logging.FileHandler("pars.log"),
-              logging.StreamHandler(sys.stdout)]
+    handlers=[
+        logging.FileHandler("pars.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 
 AUTHORS_CACHE = set()
@@ -55,13 +57,20 @@ def slugify_name(name: str) -> str:
 
 
 def create_quote(data: Tag) -> Quote:
+    text = data.select_one(".text").text
     author_name = data.select_one(".author").text
-    AUTHORS_CACHE.add(author_name)  # Зберігаємо оригінальне ім'я
+    tags = [tag.text for tag in data.select(".tag")]
+
+    if not text or not author_name:
+        logging.warning("No text or author_name found")
+        raise ValueError(f"Data: {text}, {author_name}")
+
+    AUTHORS_CACHE.add(slugify_name(author_name))
 
     return Quote(
-        text=data.select_one(".text").text,
+        text=text,
         author=author_name,
-        tags=[tag.text for tag in data.select(".tag")],
+        tags=tags,
     )
 
 
@@ -86,9 +95,19 @@ def scrap_author_page(url: str, session: requests.Session) -> Author | None:
     soup = BeautifulSoup(response.content, "html.parser")
     details = soup.select_one(".author-details")
 
-    if not details:  # Захист від порожніх сторінок
+    if not details:
         logging.warning(f"Author details not found at {url}")
         return None
+
+    fullname = details.select_one(".author-title").text.strip(),
+    born_date = details.select_one(".author-born-date").text.strip(),
+    born_location = details.select_one(".author-born-location").text.strip(),
+    description = details.select_one(".author-description").text.strip(),
+
+    if not born_location or not born_date or not description or not fullname:
+        logging.warning(f"Author details not found at {url}")
+        raise ValueError(f"Data: {fullname}, {born_date}, "
+                         f"{born_location}, {description}")
 
     return Author(
         fullname=details.select_one(".author-title").text.strip(),
